@@ -1,0 +1,152 @@
+---
+title: "predmachlearn-prj"
+author: "Stefano Merlo"
+date: "04/11/2015"
+output: pdf_document
+---
+Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
+
+ 
+# CHECKLIST
+
+1. Your submission should consist of a link to a Github repo with your R markdown and compiled HTML file describing your analysis. Please constrain the text of the writeup to < 2000 words and the number of figures to be less than 5. It will make it easier for the graders if you submit a repo with a gh-pages branch so the HTML page can be viewed online (and you always want to make it easy on graders :-).
+2. You should also apply your machine learning algorithm to the 20 test cases available in the test data above. Please submit your predictions in appropriate format to the programming assignment for automated grading. See the programming assignment for additional details. 
+
+Reproducibility 
+
+Due to security concerns with the exchange of R code, your code will not be run during the evaluation by your classmates. Please be sure that if they download the repo, they will be able to view the compiled HTML version of your analysis. 
+
+Does the submission build a machine learning algorithm to predict activity quality from activity monitors?
+
+Do the authors describe what they expect the out of sample error to be and estimate the error appropriately with cross-validation?
+
+# Overview
+
+Goal of this project is to predict the manner in which the subjects did the exercise, by estimating the "classe" variable in the training set.
+
+# Data preparation and exploratory analysis
+
+```{r}
+# load libraries
+library(reshape)
+library(ggplot2)
+library(caret)
+set.seed(816)
+
+# download data sets
+setwd("/home/erpreciso/Documents/school")
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", "temp", method="curl")
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", "temp2", method="curl")
+
+# import data considering also DIV/0! strings as NAs
+training <- read.csv("temp", na.strings=c("NA","#DIV/0!"))
+testing <- read.csv("temp2", na.strings=c("NA","#DIV/0!"))
+
+# # create dataframe with predictors only
+# predictors <- names(training)[!names(training) %in% 
+#                                   c("user_name","cvtd_timestamp","classe")]
+# training.predictors <- training[, predictors]
+# testing.predictors <- testing[, predictors]
+
+# add dummy vars for factors
+dummies <- dummyVars(classe ~ ., data=training)
+dummies2 <- dummyVars( ~ ., data=testing)
+training.predictors <- data.frame(predict(dummies, newdata=training))
+testing.predictors <- data.frame(predict(dummies2, newdata=testing))
+
+# find predictors with zero / near zero variance, and remove
+nsv <- nearZeroVar(training.predictors, saveMetrics=TRUE)
+training.predictors <- training.predictors[,row.names(nsv[!nsv$nzv,])]
+testing.predictors <- testing.predictors[,row.names(nsv[!nsv$nzv,])]
+
+# find predictors with high correlation, and remove
+predictors.correlation <- cor(training.predictors, use="na.or.complete")
+high.correlation <- findCorrelation(predictors.correlation, 0.9)
+training.predictors <- training.predictors[, -high.correlation]
+testing.predictors <- testing.predictors[, -high.correlation]
+
+# # split in two train/test
+# in.train <- createDataPartition(y=training$classe, p=.75, list=FALSE)
+# train <- cbind(training.predictors[in.train,], training$classe[in.train])
+# test <- cbind(training.predictors[-in.train,], training$classe[-in.train])
+
+# select parameter to control the model selection: 10-fold cross-validation
+fit.control <- trainControl(method = "repeatedcv",number = 10,repeats = 10)
+
+fit <- preProcess(training.predictors[,-94], method="pca")
+pr <- predict(fit, training.predictors[,-94])
+out.train <- train(training.predictors[,94] ~ ., method="rpart",
+                   data=training.predictors, trControl=fit.control)
+
+# # split the train set into train/testing
+# in.train <- createDataPartition(y=plm.train$classe, p=.75, list=FALSE)
+# training <- plm.train[in.train,]
+# testing <- plm.train[-in.train,]
+
+# # fit a simple glm model (not working...)
+# glm.model <- train(classe ~ ., data=training, method="glm", na.action=na.omit)
+# predictions <- predict(glm.model, newdata=testing)
+# confusionMatrix(predictions, testing$classe)
+
+# fit a decision tree model
+fit <- train(classe ~ ., data=training, method="rpart")
+p <- predict(fit, newdata=testing)
+
+# merge the two datasets adding a train/test variable
+# TODO
+
+# ## exploratory analysis
+# # from the table username vs timestamp, we can exclude timestamp from the analysis and regroup each user's obs
+# table(train$cvtd, train$user)
+# 
+# # every user performed all kinds of exercises
+# table(train$class, train$user)
+# 
+# # some variable don't contain any value, only NA. Let's remove from dataset
+# not.empty.vars <- names(train)[apply(train,2,function(x){all(is.na(x))}) == FALSE]
+# train <- train[, not.empty.vars]
+# 
+# # create a dataset with predictors only
+# train.predictors <- train[,8:153]
+# 
+# # evaluate correlations within predictors
+# M <- abs(cor(train.predictors)) # save all absolute correlations in M
+# diag(M) <- 0 # set the diagonal to zero
+# which(M > .8, arr.ind=TRUE) # return a table with highl correlated
+# then plot the columns returned by the above
+# then combine those variables into a more meaningful one with prcomp
+# prComp <- prcomp(datasetlesstheresponse)
+# 
+# # build the model
+# preproc.model <- preProcess(train.predictors, method="pca", thresh=0.8, pcaComp=2)
+# 
+# # names(train)[grep("dumbbell", names(train))] # see all variables for "dumbbell"
+
+```
+
+# How the model is built
+
+Use PCA to estimate best predictors
+Use random forest?
+
+# How cross-validation is used
+
+# Expected out of sample error
+
+```{r}
+# split data set into training (60%), testing(20%), and validation (20%)
+
+```
+
+# Appendix
+
+### Resources
+
+Paper (link)[http://groupware.les.inf.puc-rio.br/work.jsf?p1=11201]
+
+Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013.
+
+http://groupware.les.inf.puc-rio.br/public/papers/2013.Velloso.QAR-WLE.pdf
+
