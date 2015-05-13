@@ -1,3 +1,5 @@
+# I'll build a basic model, and explore how NA introduction affects the prediction
+
 # load data
 data(iris)
 require(caret)
