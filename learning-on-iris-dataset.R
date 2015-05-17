@@ -3,6 +3,7 @@
 # load data
 data(iris)
 require(caret)
+require(MASS)
 set.seed(825)
 
 # Simple Splitting Based on the Outcome
@@ -23,7 +24,7 @@ fitControl <- trainControl(## 10-fold CV
     ## repeated ten times
     repeats = 10)
 
-# create model
+# create model --> accuracy = 0.93
 fit <- train(Species ~ ., data = training,
                  method = "rpart",
                  preProcess = "pca",
@@ -39,3 +40,9 @@ prediction[prediction$setosa < 1 & prediction$virginica < prediction$versicolor,
 
 # evaluate result
 confusionMatrix(prediction$pS, testing$Species)
+
+# test a linear discriminant analysis approach --> accuracy = 1
+lda.fit <- lda(Species ~., data=training)
+lda.pred <- predict(lda.fit, newdata=testing)
+
+confusionMatrix(lda.pred$class, testing$Species)

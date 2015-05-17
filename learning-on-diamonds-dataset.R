@@ -3,6 +3,7 @@
 # load data
 require(caret)
 require(ggplot2)
+require(MASS)
 set.seed(111)
 data(diamonds)
 
@@ -11,17 +12,15 @@ in.train <- createDataPartition(diamonds$cut, p=0.80, list=FALSE)
 training <- diamonds[in.train,]
 testing <- diamonds[-in.train,]
 
-# fit simple model
-fitControl <- trainControl(## 10-fold CV
-    method = "repeatedcv",
-    number = 10,
-    ## repeated ten times
-    repeats = 10)
+# model using lda function from MASS package
+lda.fit <- lda(cut ~ ., data=training)
+lda.pred <- predict(lda.fit, newdata=testing)
 
-# create model
-fit <- train(cut ~ clarity, data = training,
-                 method = "rpart",
-                 trControl = fitControl)
+c1 <- confusionMatrix(lda.pred$class, testing$cut)
 
-# predict
-prediction <- predict(fit, newdata=testing[,c(3,4)], type="prob")
+# model using caret/lda
+fit2 <- train(cut ~ ., data=training, method="lda")
+predictions <- predict(fit2, newdata=testing)
+c2 <- confusionMatrix(predictions, testing$cut)
+
+paste("Accuracy: ", round(c1$overall[1], 3))
