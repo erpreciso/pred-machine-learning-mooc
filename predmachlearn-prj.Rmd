@@ -44,72 +44,6 @@ download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.c
 training <- read.csv("temp", na.strings=c("NA","#DIV/0!"))
 testing <- read.csv("temp2", na.strings=c("NA","#DIV/0!"))
 
-# # create dataframe with predictors only
-# predictors <- names(training)[!names(training) %in% 
-#                                   c("user_name","cvtd_timestamp","classe")]
-# training.predictors <- training[, predictors]
-# testing.predictors <- testing[, predictors]
-
-# add dummy vars for factors (code below not working because testing$new_window is a one-level factor)
-# dummies <- dummyVars(classe ~ ., data=training)
-# dummies2 <- dummyVars(problem_id ~ ., data=testing)
-# training.predictors <- data.frame(predict(dummies, newdata=training))
-# testing.predictors <- data.frame(predict(dummies2, newdata=testing))
-
-# aggregate training/testing dataframes to do some data transformation
-training$test.set <- FALSE
-testing$test.set <- TRUE
-training$problem_id <- 99
-testing$classe <- NA
-all <- rbind(training, testing)
-
-# create dummy variables
-dummies <- dummyVars(classe ~ ., data=all)
-all.predictors <- data.frame(predict(dummies, newdata=all))
-
-
-
-# find predictors with zero / near zero variance, and remove
-nsv <- nearZeroVar(all.predictors[all.predictors$test.setFALSE==1,], saveMetrics=TRUE)
-to.eliminate <- row.names(nsv[nsv$nzv,][1:52,])
-all.predictors <- all.predictors[, -which(names(all.predictors) %in% to.eliminate)]
-
-# find predictors with high correlation, and remove
-predictors.correlation <- abs(cor(all.predictors[all.predictors$test.setFALSE==1,],
-                              method="pearson",
-                              use="pairwise.complete.obs"))
-diag(predictors.correlation) <- 0
-high.correlation <- which(predictors.correlation > .8, arr.ind=TRUE)
-all.predictors <- all.predictors[, -high.correlation]
-
-# impute all NAs to zero
-all.predictors[is.na(all.predictors)] <- 0
-
-# reinclude the classe response
-all.predictors$classe <- all$classe
-
-# select parameter to control the model selection: 10-fold cross-validation
-fit.control <- trainControl(method = "repeatedcv",number = 10,repeats = 10)
-
-fit <- preProcess(all.predictors[,-70], method="pca")
-pr <- predict(fit, all.predictors[,-70])
-out2 <- train(all.predictors$classe ~ ., method="gbm",
-                   data=all.predictors, trControl=fit.control)
-
-# # split the train set into train/testing
-# in.train <- createDataPartition(y=plm.train$classe, p=.75, list=FALSE)
-# training <- plm.train[in.train,]
-# testing <- plm.train[-in.train,]
-
-# # fit a simple glm model (not working...)
-# glm.model <- train(classe ~ ., data=training, method="glm", na.action=na.omit)
-# predictions <- predict(glm.model, newdata=testing)
-# confusionMatrix(predictions, testing$classe)
-
-# fit a decision tree model
-fit <- train(classe ~ ., data=training, method="rpart")
-p <- predict(fit, newdata=testing)
-
 
 # ## exploratory analysis
 # # from the table username vs timestamp, we can exclude timestamp from the analysis and regroup each user's obs
@@ -117,16 +51,6 @@ p <- predict(fit, newdata=testing)
 # 
 # # every user performed all kinds of exercises
 # table(train$class, train$user)
-# 
-#
-# 
-# then combine those variables into a more meaningful one with prcomp
-# prComp <- prcomp(datasetlesstheresponse)
-# 
-# # build the model
-# preproc.model <- preProcess(train.predictors, method="pca", thresh=0.8, pcaComp=2)
-# 
-# # names(train)[grep("dumbbell", names(train))] # see all variables for "dumbbell"
 
 ```
 
