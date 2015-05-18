@@ -1,38 +1,27 @@
 ---
-title: "predmachlearn-prj"
+title: "Coursera - Predictive Machine Learning MOOC - Course project"
 author: "Stefano Merlo"
 date: "04/11/2015"
-output: pdf_document
+output: html_document
 ---
-Background
-
-Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
-
- 
-# CHECKLIST
-
-1. Your submission should consist of a link to a Github repo with your R markdown and compiled HTML file describing your analysis. Please constrain the text of the writeup to < 2000 words and the number of figures to be less than 5. It will make it easier for the graders if you submit a repo with a gh-pages branch so the HTML page can be viewed online (and you always want to make it easy on graders :-).
-2. You should also apply your machine learning algorithm to the 20 test cases available in the test data above. Please submit your predictions in appropriate format to the programming assignment for automated grading. See the programming assignment for additional details. 
-
-Reproducibility 
-
-Due to security concerns with the exchange of R code, your code will not be run during the evaluation by your classmates. Please be sure that if they download the repo, they will be able to view the compiled HTML version of your analysis. 
-
-Does the submission build a machine learning algorithm to predict activity quality from activity monitors?
-
-Do the authors describe what they expect the out of sample error to be and estimate the error appropriately with cross-validation?
 
 # Overview
 
-Goal of this project is to predict the manner in which the subjects did the exercise, by estimating the "classe" variable in the training set.
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
+
+Goal of this project is to predict the manner in which the subjects did the exercise, by estimating the "classe" response variable.
 
 # Data preparation and exploratory analysis
 
+Focus of this analysis is on quantitative continuous data coming from activity sensors; all other variables (like timestamps) will be excluded from the model.
+
+Since not meaningful for prediction, we'll exclude variables with near zero variance: in addition, to reduce the number of predictors, we'll remove also highly correlated (>0.9) variables.
+
+From a quick plot, many variables are almost completely missing values. All predictors with missing data (NAs) will be removed before testing models.
+
 ```{r}
 # load libraries
-library(reshape)
-library(ggplot2)
-library(caret)
+require(caret)
 set.seed(816)
 
 # download data sets
@@ -43,34 +32,103 @@ download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.c
 # import data considering also DIV/0! strings as NAs
 training <- read.csv("temp", na.strings=c("NA","#DIV/0!"))
 testing <- read.csv("temp2", na.strings=c("NA","#DIV/0!"))
+                                                                                                
+# find predictors with zero / near zero variance and mark for removal
+nsv <- nearZeroVar(training, saveMetrics=TRUE)
+to.eliminate <- row.names(nsv[nsv$nzv,])
 
+# mark for removal some not meaningful variables
+excl <- c("problem_id","X","user_name","raw_timestamp_part_1",
+          "raw_timestamp_part_2","cvtd_timestamp","num_window")
+to.eliminate <- c(to.eliminate, excl)   
 
-# ## exploratory analysis
-# # from the table username vs timestamp, we can exclude timestamp from the analysis and regroup each user's obs
-# table(train$cvtd, train$user)
-# 
-# # every user performed all kinds of exercises
-# table(train$class, train$user)
+# remove variables marked
+training <- training[, -which(names(training) %in% to.eliminate)]
+testing <- testing[, -which(names(testing) %in% to.eliminate)]
 
+# plot NAs distribution histogram
+nas.dist <- apply(training,2, function(x) sum(is.na(x)))
+qplot(nas.dist, geom="histogram", xlab="NAs", ylab="Count of variables", main="Distribution of NAs across predictors")
+
+# subset only predictors with NA values
+nas <- !is.na(colSums(training[, -which(names(training)=="classe")]))
+training <- training[,nas]
+testing <- testing[,nas]
+
+# find predictors with high correlation, and remove
+training.cor <- abs(cor(training[, -which(names(training)=="classe")],
+                        method="pearson"))
+diag(training.cor) <- 0
+high.cor <- which(training.cor > .8, arr.ind=TRUE)
+training <- training[, -high.cor]
+testing <- testing[, -high.cor]
 ```
 
-# How the model is built
+# How the model is built, and how cross-validation is used
 
-Use PCA to estimate best predictors
-Use random forest?
+Two different models have been used: **Linear Discriminant Analysis (LDA)** and **Gradient Boosting Machine (GBM)**. To choose between, we'll extract a validation subset from the training set, and measure accuracy on that.
 
-# How cross-validation is used
-
-# Expected out of sample error
+We'll pass a request to perform a 5-folds cross-validation in training the model with the caret's ```trainControl``` call.
 
 ```{r}
-# split data set into training (60%), testing(20%), and validation (20%)
+# create a validation subset to test different models
+in.train <- createDataPartition(training$classe, p=0.8, list=FALSE)
+ta <- training[in.train,]
+te <- training[-in.train,]
 
+# using cross-validation in the model
+fc <- trainControl(method = "repeatedcv", number = 5, repeats = 5)
 ```
 
-# Appendix
+#### Linear Discriminant Analysis
 
-### Resources
+This model is prefered when there's the assumption that data are normally distributed, differently from this analysis, and look for combinations within variables.
+
+```{r}
+lda.fit <- train(classe~.,data=ta, method="lda", trControl=fc)
+lda.metric <- confusionMatrix(predict(lda.fit, newdata=te), te$classe)
+lda.metric
+```
+
+This method returns a poor accuracy: ```r round(lda.metric$overall[[1]], 2)```
+
+#### Regression Trees
+
+This model is more oriented to find interactions between variables.
+
+```{r}
+rpart.fit <- train(classe~.,data=ta, method="rpart", trControl=fc)
+rpart.metric <- confusionMatrix(predict(rpart.fit, newdata=te), te$classe)
+rpart.metric
+```
+
+This method returns a very poor accuracy, even lower than random guessing: ```r round(rpart.metric$overall[[1]], 3)```
+
+#### Gradient Boosting Machine
+
+Another model tested is Gradient Boosting Machine, that uses regression trees to predict probabilities.
+
+```{r}
+gbm.fit <- train(classe~.,data=ta, method="gbm", verbose=FALSE, trControl=fc)
+gbm.metric <- confusionMatrix(predict(gbm.fit, newdata=te), te$classe)
+gbm.metric
+```
+
+ This returns a very good accuracy, and it will be chosen for the test prediction: ```r round(gbm.metric$overall[[1]], 2)```
+ 
+# Expected out of sample error
+
+From the accuracy returned by the model testing on the validation set, a ```r sprintf("%1.0f%%", 100*(1 - round(gbm.metric$overall[[1]],2)))``` of out-of-sample error is expected.
+
+# Actual data prediction
+
+Testing data will be predicted and saved into ```gbm.prediction```.
+
+```{r}
+gbm.prediction <- predict(gbm.fit, newdata=testing)
+```
+
+# Resources
 
 Paper (link)[http://groupware.les.inf.puc-rio.br/work.jsf?p1=11201]
 
